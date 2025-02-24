@@ -9,6 +9,7 @@ import torch
 from pathlib import Path
 import warnings
 import traceback
+import os
 warnings.filterwarnings('ignore')
 
 console = Console()
@@ -20,6 +21,12 @@ class RAGSystem:
             self.excel_path = excel_path
             self.device = "cuda" if torch.cuda.is_available() else "cpu"
             console.print(f"\nCihaz: {self.device}", style="yellow")
+            
+            # Hugging Face token kontrolü
+            self.hf_token = os.getenv('HUGGING_FACE_TOKEN')
+            if not self.hf_token:
+                raise ValueError("HUGGING_FACE_TOKEN bulunamadı! Lütfen .env dosyasına token'ınızı ekleyin.")
+            
             self.setup_model()
             self.setup_database()
         except Exception as e:
@@ -40,6 +47,7 @@ class RAGSystem:
             console.print("\nTokenizer yükleniyor...", style="yellow")
             self.tokenizer = AutoTokenizer.from_pretrained(
                 self.model_name,
+                token=self.hf_token,
                 trust_remote_code=True,
                 padding_side="left",
                 use_fast=False
@@ -53,6 +61,7 @@ class RAGSystem:
             console.print("\nModel dosyaları indiriliyor...", style="yellow")
             self.model = AutoModelForCausalLM.from_pretrained(
                 self.model_name,
+                token=self.hf_token,
                 torch_dtype=torch.bfloat16,
                 device_map="auto",
                 trust_remote_code=True,

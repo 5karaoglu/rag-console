@@ -12,6 +12,7 @@ services:
       - TRANSFORMERS_CACHE=/app/cache/huggingface
       - TORCH_HOME=/app/cache/torch
       - HF_HOME=/app/cache/huggingface
+      - HUGGING_FACE_TOKEN=${HUGGING_FACE_TOKEN}  # Hugging Face token'ı
     deploy:
       resources:
         reservations:
