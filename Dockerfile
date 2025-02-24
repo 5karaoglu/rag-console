@@ -4,7 +4,7 @@ FROM nvidia/cuda:12.1.0-runtime-ubuntu22.04
 RUN apt-get update && apt-get install -y \
     python3.10 \
     python3-pip \
-    git \
+    wget \
     && rm -rf /var/lib/apt/lists/*
 
 # Çalışma dizinini oluştur
@@ -24,11 +24,10 @@ ENV HF_HOME=/app/cache/huggingface
 COPY requirements.txt .
 RUN pip3 install --no-cache-dir -r requirements.txt
 
-# Qwen model kodlarını klonla ve transformers modellerine ekle
-RUN git clone https://huggingface.co/Qwen/Qwen2 /tmp/Qwen2 && \
-    cp -r /tmp/Qwen2/modeling_qwen.py /usr/local/lib/python3.10/dist-packages/transformers/models/qwen/ && \
-    cp -r /tmp/Qwen2/configuration_qwen.py /usr/local/lib/python3.10/dist-packages/transformers/models/qwen/ && \
-    rm -rf /tmp/Qwen2
+# Qwen model kodlarını indir ve transformers modellerine ekle
+RUN mkdir -p /usr/local/lib/python3.10/dist-packages/transformers/models/qwen && \
+    wget -O /usr/local/lib/python3.10/dist-packages/transformers/models/qwen/modeling_qwen.py https://huggingface.co/Qwen/Qwen2/raw/main/modeling_qwen.py && \
+    wget -O /usr/local/lib/python3.10/dist-packages/transformers/models/qwen/configuration_qwen.py https://huggingface.co/Qwen/Qwen2/raw/main/configuration_qwen.py
 
 # Uygulama kodlarını kopyala
 COPY rag_app.py .
