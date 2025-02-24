@@ -1,0 +1,21 @@
+version: '3.8'
+
+services:
+  rag-app:
+    build: .
+    volumes:
+      - ./data/chroma_db:/app/chroma_db  # ChromaDB verilerini kalıcı hale getir
+      - ./data/cache/huggingface:/app/cache/huggingface  # Hugging Face cache
+      - ./data/cache/torch:/app/cache/torch  # PyTorch cache
+      - ${EXCEL_PATH:-./Book1.xlsx}:/app/Book1.xlsx  # Excel dosyasını bağla
+    environment:
+      - TRANSFORMERS_CACHE=/app/cache/huggingface
+      - TORCH_HOME=/app/cache/torch
+      - HF_HOME=/app/cache/huggingface
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu] 
