@@ -8,6 +8,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 import torch
 from pathlib import Path
 import warnings
+import traceback
 warnings.filterwarnings('ignore')
 
 console = Console()
@@ -15,34 +16,58 @@ app = typer.Typer()
 
 class RAGSystem:
     def __init__(self, excel_path: str):
-        self.excel_path = excel_path
-        self.device = "cuda" if torch.cuda.is_available() else "cpu"
-        self.setup_model()
-        self.setup_database()
+        try:
+            self.excel_path = excel_path
+            self.device = "cuda" if torch.cuda.is_available() else "cpu"
+            console.print(f"\nCihaz: {self.device}", style="yellow")
+            self.setup_model()
+            self.setup_database()
+        except Exception as e:
+            console.print("\n❌ Başlatma Hatası:", style="bold red")
+            console.print(f"Hata Mesajı: {str(e)}", style="red")
+            console.print("\nHata Detayı:", style="bold red")
+            console.print(traceback.format_exc(), style="red")
+            raise e
         
     def setup_model(self):
-        console.print("Model yükleniyor...", style="yellow")
-        self.model_name = "deepseek-ai/DeepSeek-R1-Distill-Qwen-32B"
-        
-        # Tokenizer yapılandırması
-        self.tokenizer = AutoTokenizer.from_pretrained(
-            self.model_name,
-            trust_remote_code=True,
-            padding_side="left"
-        )
-        if self.tokenizer.pad_token is None:
-            self.tokenizer.pad_token = self.tokenizer.eos_token
+        try:
+            console.print("\nModel yükleniyor...", style="yellow")
+            console.print(f"Model: deepseek-ai/DeepSeek-R1-Distill-Qwen-32B", style="yellow")
             
-        # Model yapılandırması
-        self.model = AutoModelForCausalLM.from_pretrained(
-            self.model_name,
-            torch_dtype=torch.bfloat16,
-            device_map="auto",
-            trust_remote_code=True,
-            low_cpu_mem_usage=True
-        )
-        self.model.config.pad_token_id = self.tokenizer.pad_token_id
-        console.print("Model yüklendi!", style="green")
+            self.model_name = "deepseek-ai/DeepSeek-R1-Distill-Qwen-32B"
+            
+            # Tokenizer yapılandırması
+            console.print("\nTokenizer yükleniyor...", style="yellow")
+            self.tokenizer = AutoTokenizer.from_pretrained(
+                self.model_name,
+                trust_remote_code=True,
+                padding_side="left"
+            )
+            console.print("Tokenizer yüklendi!", style="green")
+            
+            if self.tokenizer.pad_token is None:
+                self.tokenizer.pad_token = self.tokenizer.eos_token
+            
+            # Model yapılandırması
+            console.print("\nModel dosyaları indiriliyor...", style="yellow")
+            self.model = AutoModelForCausalLM.from_pretrained(
+                self.model_name,
+                torch_dtype=torch.bfloat16,
+                device_map="auto",
+                trust_remote_code=True,
+                low_cpu_mem_usage=True
+            )
+            console.print("Model yüklendi!", style="green")
+            
+            self.model.config.pad_token_id = self.tokenizer.pad_token_id
+            console.print("\nModel yapılandırması tamamlandı!", style="green")
+            
+        except Exception as e:
+            console.print("\n❌ Model Yükleme Hatası:", style="bold red")
+            console.print(f"Hata Mesajı: {str(e)}", style="red")
+            console.print("\nHata Detayı:", style="bold red")
+            console.print(traceback.format_exc(), style="red")
+            raise e
         
     def setup_database(self):
         console.print("Veritabanı hazırlanıyor...", style="yellow")
