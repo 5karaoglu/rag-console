@@ -23,16 +23,25 @@ class RAGSystem:
     def setup_model(self):
         console.print("Model yükleniyor...", style="yellow")
         self.model_name = "deepseek-ai/DeepSeek-R1-Distill-Qwen-32B"
+        
+        # Tokenizer yapılandırması
         self.tokenizer = AutoTokenizer.from_pretrained(
             self.model_name,
-            trust_remote_code=True
+            trust_remote_code=True,
+            padding_side="left"
         )
+        if self.tokenizer.pad_token is None:
+            self.tokenizer.pad_token = self.tokenizer.eos_token
+            
+        # Model yapılandırması
         self.model = AutoModelForCausalLM.from_pretrained(
             self.model_name,
             torch_dtype=torch.bfloat16,
             device_map="auto",
-            trust_remote_code=True
+            trust_remote_code=True,
+            low_cpu_mem_usage=True
         )
+        self.model.config.pad_token_id = self.tokenizer.pad_token_id
         console.print("Model yüklendi!", style="green")
         
     def setup_database(self):
