@@ -41,7 +41,8 @@ class RAGSystem:
             self.tokenizer = AutoTokenizer.from_pretrained(
                 self.model_name,
                 trust_remote_code=True,
-                padding_side="left"
+                padding_side="left",
+                use_fast=False
             )
             console.print("Tokenizer yüklendi!", style="green")
             
@@ -55,7 +56,8 @@ class RAGSystem:
                 torch_dtype=torch.bfloat16,
                 device_map="auto",
                 trust_remote_code=True,
-                low_cpu_mem_usage=True
+                low_cpu_mem_usage=True,
+                use_cache=True
             )
             console.print("Model yüklendi!", style="green")
             
