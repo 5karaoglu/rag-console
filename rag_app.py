@@ -11,6 +11,7 @@ from pathlib import Path
 import warnings
 import traceback
 import os
+import glob
 warnings.filterwarnings('ignore')
 
 console = Console()
@@ -73,13 +74,24 @@ class RAGSystem:
             # Çevre değişkeni kontrolü
             use_local_first = os.getenv('USE_LOCAL_MODEL_FIRST', 'false').lower() == 'true'
             
-            if os.path.exists(model_cache_path) and use_local_first:
+            # Daha detaylı cache kontrolü
+            model_files_complete = False
+            if os.path.exists(model_cache_path):
+                # Shard dosyalarını kontrol et
+                shard_pattern = os.path.join(model_cache_path, "snapshots", "*", "model-*.safetensors")
+                shard_files = glob.glob(shard_pattern)
+                if len(shard_files) >= 8:  # DeepSeek modeli 8 shard içeriyor
+                    model_files_complete = True
+            
+            if os.path.exists(model_cache_path) and use_local_first and model_files_complete:
                 console.print(f"Model cache bulundu: {model_cache_path}", style="green")
-                console.print("USE_LOCAL_MODEL_FIRST=true ayarlandı, önce yerel model deneniyor", style="green")
+                console.print("USE_LOCAL_MODEL_FIRST=true ayarlandı ve tüm model dosyaları mevcut, önce yerel model deneniyor", style="green")
                 try_local_first = True
             else:
                 if not os.path.exists(model_cache_path):
                     console.print("Model cache bulunamadı, indiriliyor...", style="yellow")
+                elif not model_files_complete:
+                    console.print("Model cache bulundu fakat eksik dosyalar var, indiriliyor...", style="yellow")
                 else:
                     console.print("Model cache bulundu fakat USE_LOCAL_MODEL_FIRST=false, indiriliyor...", style="yellow")
                 try_local_first = False
