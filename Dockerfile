@@ -1,5 +1,16 @@
 FROM nvidia/cuda:12.1.0-runtime-ubuntu22.04
 
+# Locale ayarlarını düzelt
+RUN apt-get update && apt-get install -y locales && \
+    locale-gen en_US.UTF-8 && \
+    update-locale LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8
+ENV LANG=en_US.UTF-8
+ENV LC_ALL=en_US.UTF-8
+
+# HTTP istekleri için kullanıcı ajanını ayarla
+ENV TRANSFORMERS_USER_AGENT=Mozilla/5.0
+ENV HF_USER_AGENT=Mozilla/5.0
+
 # Sistem bağımlılıklarını yükle
 RUN apt-get update && apt-get install -y \
     python3.10 \
