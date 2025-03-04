@@ -1,4 +1,5 @@
 import pandas as pd
+import json
 import chromadb
 from chromadb.utils import embedding_functions
 import typer
@@ -16,9 +17,9 @@ console = Console()
 app = typer.Typer()
 
 class RAGSystem:
-    def __init__(self, excel_path: str):
+    def __init__(self, json_path: str):
         try:
-            self.excel_path = excel_path
+            self.json_path = json_path
             self.device = "cuda" if torch.cuda.is_available() else "cpu"
             console.print(f"\nCihaz: {self.device}", style="yellow")
             
@@ -43,6 +44,10 @@ class RAGSystem:
             
             self.model_name = "deepseek-ai/DeepSeek-R1-Distill-Qwen-32B"
             
+            # Cache dizinleri için bilgi
+            cache_dir = os.getenv('TRANSFORMERS_CACHE', './cache/huggingface')
+            console.print(f"Cache Konumu: {cache_dir}", style="yellow")
+            
             # Tokenizer yapılandırması
             console.print("\nTokenizer yükleniyor...", style="yellow")
             self.tokenizer = AutoTokenizer.from_pretrained(
@@ -50,7 +55,9 @@ class RAGSystem:
                 token=self.hf_token,
                 trust_remote_code=True,
                 padding_side="left",
-                use_fast=False
+                use_fast=False,
+                cache_dir=cache_dir,
+                local_files_only=False
             )
             console.print("Tokenizer yüklendi!", style="green")
             
@@ -58,17 +65,62 @@ class RAGSystem:
                 self.tokenizer.pad_token = self.tokenizer.eos_token
             
             # Model yapılandırması
-            console.print("\nModel dosyaları indiriliyor...", style="yellow")
-            self.model = AutoModelForCausalLM.from_pretrained(
-                self.model_name,
-                token=self.hf_token,
-                torch_dtype=torch.bfloat16,
-                device_map="auto",
-                trust_remote_code=True,
-                low_cpu_mem_usage=True,
-                use_cache=True
-            )
-            console.print("Model yüklendi!", style="green")
+            console.print("\nModel dosyaları indiriliyor veya cache'den yükleniyor...", style="yellow")
+            
+            # Cache durumunu kontrol et
+            model_cache_path = os.path.join(cache_dir, "models--deepseek-ai--DeepSeek-R1-Distill-Qwen-32B")
+            
+            # Çevre değişkeni kontrolü
+            use_local_first = os.getenv('USE_LOCAL_MODEL_FIRST', 'false').lower() == 'true'
+            
+            if os.path.exists(model_cache_path) and use_local_first:
+                console.print(f"Model cache bulundu: {model_cache_path}", style="green")
+                console.print("USE_LOCAL_MODEL_FIRST=true ayarlandı, önce yerel model deneniyor", style="green")
+                try_local_first = True
+            else:
+                if not os.path.exists(model_cache_path):
+                    console.print("Model cache bulunamadı, indiriliyor...", style="yellow")
+                else:
+                    console.print("Model cache bulundu fakat USE_LOCAL_MODEL_FIRST=false, indiriliyor...", style="yellow")
+                try_local_first = False
+            
+            try:
+                # Önce yerel dosyalardan yüklemeyi dene
+                if try_local_first:
+                    try:
+                        self.model = AutoModelForCausalLM.from_pretrained(
+                            self.model_name,
+                            token=self.hf_token,
+                            torch_dtype=torch.bfloat16,
+                            device_map="auto",
+                            trust_remote_code=True,
+                            low_cpu_mem_usage=True,
+                            use_cache=True,
+                            cache_dir=cache_dir,
+                            local_files_only=True
+                        )
+                        console.print("Model yerel cache'den yüklendi!", style="green")
+                    except Exception as local_error:
+                        console.print(f"Yerel cache'den yükleme başarısız: {str(local_error)}", style="yellow")
+                        raise local_error
+                else:
+                    raise FileNotFoundError("Yerel cache atlanıyor")
+                    
+            except Exception as e:
+                console.print("Online'dan model indiriliyor...", style="yellow")
+                self.model = AutoModelForCausalLM.from_pretrained(
+                    self.model_name,
+                    token=self.hf_token,
+                    torch_dtype=torch.bfloat16,
+                    device_map="auto",
+                    trust_remote_code=True,
+                    low_cpu_mem_usage=True,
+                    use_cache=True,
+                    cache_dir=cache_dir,
+                    local_files_only=False,
+                    resume_download=True
+                )
+                console.print("Model indirildi ve cache'e kaydedildi!", style="green")
             
             self.model.config.pad_token_id = self.tokenizer.pad_token_id
             console.print("\nModel yapılandırması tamamlandı!", style="green")
@@ -91,29 +143,52 @@ class RAGSystem:
         
         # Koleksiyon oluştur veya var olanı al
         self.collection = self.chroma_client.get_or_create_collection(
-            name="excel_data",
+            name="json_data",
             embedding_function=self.embedding_function
         )
         
-        # Excel verilerini yükle ve veritabanına ekle
+        # JSON verilerini yükle ve veritabanına ekle
         if self.collection.count() == 0:
-            self.load_excel_data()
+            self.load_json_data()
             
         console.print("Veritabanı hazır!", style="green")
         
-    def load_excel_data(self):
-        console.print("Excel verisi yükleniyor...", style="yellow")
-        df = pd.read_excel(self.excel_path)
-        
-        # Her satırı bir döküman olarak ekle
-        for idx, row in df.iterrows():
-            # Satırdaki tüm değerleri stringe çevir ve birleştir
-            content = " ".join([f"{col}: {str(val)}" for col, val in row.items()])
-            self.collection.add(
-                documents=[content],
-                ids=[f"row_{idx}"]
-            )
-        console.print("Excel verisi yüklendi!", style="green")
+    def load_json_data(self):
+        console.print("JSON verisi yükleniyor...", style="yellow")
+        try:
+            with open(self.json_path, 'r', encoding='utf-8') as file:
+                data = json.load(file)
+            
+            # JSON yapısını kontrol et
+            if "Sheet1" in data:
+                # Veriyi işle
+                documents = []
+                ids = []
+                
+                for idx, item in enumerate(data["Sheet1"]):
+                    # Satırdaki tüm değerleri stringe çevir ve birleştir
+                    content = " ".join([f"{key}: {str(value)}" for key, value in item.items()])
+                    documents.append(content)
+                    ids.append(f"doc_{idx}")
+                
+                # Belgeleri batch halinde ekle (bellek kullanımını optimize etmek için)
+                batch_size = 100
+                for i in range(0, len(documents), batch_size):
+                    end_idx = min(i + batch_size, len(documents))
+                    self.collection.add(
+                        documents=documents[i:end_idx],
+                        ids=ids[i:end_idx]
+                    )
+                    
+                console.print(f"Toplam {len(documents)} belge eklendi.", style="green")
+            else:
+                console.print("JSON dosyası beklenen formatta değil.", style="red")
+                raise ValueError("JSON dosyası 'Sheet1' anahtarını içermiyor.")
+                
+        except Exception as e:
+            console.print(f"JSON veri yükleme hatası: {str(e)}", style="red")
+            raise e
+        console.print("JSON verisi yüklendi!", style="green")
         
     def query(self, question: str) -> str:
         # Benzer dökümanları bul
@@ -146,12 +221,12 @@ Yanıt:"""
         return response.split("Yanıt:")[-1].strip()
 
 @app.command()
-def main(excel_path: str = "Book1.xlsx"):
+def main(json_path: str = "Book1.json"):
     """
     RAG sistemini başlat ve kullanıcı sorularını yanıtla.
     """
     try:
-        rag = RAGSystem(excel_path)
+        rag = RAGSystem(json_path)
         console.print("\n🤖 RAG Sistemi hazır! Çıkmak için 'exit' yazın.\n", style="bold green")
         
         while True:

@@ -7,12 +7,18 @@ services:
       - ./data/chroma_db:/app/chroma_db  # ChromaDB verilerini kalıcı hale getir
       - ./data/cache/huggingface:/app/cache/huggingface  # Hugging Face cache
       - ./data/cache/torch:/app/cache/torch  # PyTorch cache
-      - ${EXCEL_PATH:-./Book1.xlsx}:/app/Book1.xlsx  # Excel dosyasını bağla
+      - ./data/cache/safetensors:/root/.cache/huggingface/hub  # Safetensors cache
+      - ./data/cache/tokenizers:/root/.cache/huggingface/transformers  # Tokenizer cache
+      - ${JSON_PATH:-./Book1.json}:/app/Book1.json  # JSON dosyasını bağla
     environment:
       - TRANSFORMERS_CACHE=/app/cache/huggingface
       - TORCH_HOME=/app/cache/torch
       - HF_HOME=/app/cache/huggingface
+      - HUGGINGFACE_HUB_CACHE=/app/cache/huggingface
+      - SENTENCE_TRANSFORMERS_HOME=/app/cache/huggingface
+      - XDG_CACHE_HOME=/app/cache
       - HUGGING_FACE_TOKEN=${HUGGING_FACE_TOKEN}  # Hugging Face token'ı
+      - USE_LOCAL_MODEL_FIRST=true  # Önce yerel model dene
     deploy:
       resources:
         reservations:

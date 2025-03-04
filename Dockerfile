@@ -26,8 +26,8 @@ RUN pip3 install --no-cache-dir -r requirements.txt
 # Uygulama kodlarını kopyala
 COPY rag_app.py .
 
-# Excel dosyasını kopyala (varsayılan dosya)
-COPY Book1.xlsx .
+# JSON dosyasını kopyala (varsayılan dosya)
+COPY Book1.json .
 
 # Çalıştırma komutu
 ENTRYPOINT ["python3", "rag_app.py"] 
