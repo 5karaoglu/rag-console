@@ -138,7 +138,7 @@ class RAGSystem:
         
         # Sentence transformer embedding fonksiyonunu kullan
         self.embedding_function = embedding_functions.SentenceTransformerEmbeddingFunction(
-            model_name="all-MiniLM-L6-v2"
+            model_name="all-mpnet-base-v2"
         )
         
         # Koleksiyon oluştur veya var olanı al
@@ -199,22 +199,37 @@ class RAGSystem:
         
         # Prompt oluştur
         context = "\n".join(results["documents"][0])
-        prompt = f"""Aşağıdaki bağlam verilmiştir. Bu bağlamı kullanarak soruyu yanıtla.
+        prompt = f"""### GÖREV:
+Aşağıda verilen bağlam bilgilerini kullanarak kullanıcının sorusuna kapsamlı ve doğru bir yanıt oluştur.
 
-Bağlam:
+### BAĞLAM:
 {context}
 
-Soru: {question}
+### SORU:
+{question}
 
-Yanıt:"""
+### TALİMATLAR:
+1. Önce bağlamı dikkatlice analiz et ve soruyla ilgili önemli bilgileri belirle.
+2. Adım adım düşünerek yanıtı oluştur.
+3. Yanıtın tamamen bağlam içindeki bilgilere dayalı olmalıdır.
+4. Eğer bağlamda soruyu yanıtlamak için yeterli bilgi yoksa, "Üzgünüm, bu soruyu yanıtlamak için yeterli bilgim yok" şeklinde belirt.
+5. Yanıtında bağlamda olmayan bilgileri uydurma.
+6. Yanıtını açık, anlaşılır ve öz bir şekilde sunmaya çalış.
+
+### YANITIM:
+"""
         
         # Model ile yanıt oluştur
         inputs = self.tokenizer(prompt, return_tensors="pt").to(self.device)
         outputs = self.model.generate(
             **inputs,
-            max_length=512,
+            max_length=768,  # Daha uzun yanıtlar için
             num_return_sequences=1,
-            temperature=0.7
+            temperature=0.3,  # Daha tutarlı yanıtlar için düşük sıcaklık
+            top_p=0.85,  # Nucleus sampling için
+            do_sample=True,  # Çeşitlilik için örnekleme yap
+            no_repeat_ngram_size=3,  # Tekrarları önle
+            repetition_penalty=1.2  # Tekrarları cezalandır
         )
         response = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
         
