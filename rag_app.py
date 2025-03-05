@@ -255,8 +255,7 @@ Aşağıda verilen bağlam bilgilerini kullanarak kullanıcının sorusuna kapsa
                 do_sample=True,  # Çeşitlilik için örnekleme yap
                 no_repeat_ngram_size=3,  # Tekrarları önle
                 repetition_penalty=1.2,  # Tekrarları cezalandır
-                pad_token_id=self.tokenizer.pad_token_id,
-                attention_mask=inputs.attention_mask
+                pad_token_id=self.tokenizer.pad_token_id
             )
         response = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
         
