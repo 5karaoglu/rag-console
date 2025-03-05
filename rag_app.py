@@ -50,6 +50,17 @@ class RAGSystem:
             console.print("\nModel yükleniyor...", style="yellow")
             console.print(f"Model: deepseek-ai/DeepSeek-R1-Distill-Qwen-32B", style="yellow")
             
+            # CUDA önbelleğini temizle
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+                console.print("CUDA önbelleği temizlendi", style="green")
+                
+                # GPU bellek bilgilerini göster
+                for i in range(torch.cuda.device_count()):
+                    total_mem = torch.cuda.get_device_properties(i).total_memory / (1024**3)
+                    free_mem = torch.cuda.memory_reserved(i) / (1024**3)
+                    console.print(f"GPU {i}: Toplam Bellek: {total_mem:.2f} GiB, Kullanılabilir: {free_mem:.2f} GiB", style="yellow")
+            
             self.model_name = "deepseek-ai/DeepSeek-R1-Distill-Qwen-32B"
             
             # Cache dizinleri için bilgi
@@ -111,14 +122,15 @@ class RAGSystem:
                             self.model_name,
                             token=self.hf_token,
                             torch_dtype=torch.bfloat16,
-                            device_map="auto",  # Otomatik cihaz haritalaması
+                            device_map="balanced",  # Dengeli cihaz haritalaması
                             trust_remote_code=True,
                             low_cpu_mem_usage=True,
                             use_cache=True,
                             cache_dir=cache_dir,
                             local_files_only=True,
-                            max_memory={0: "18GiB", 1: "18GiB"},  # Her iki GPU için bellek sınırlaması
+                            max_memory={0: "14GiB", 1: "14GiB"},  # Her iki GPU için bellek sınırlaması
                             offload_folder="offload",  # Gerekirse CPU'ya offload et
+                            offload_state_dict=True,  # Durum sözlüğünü offload et
                         )
                         console.print("Model yerel cache'den yüklendi!", style="green")
                     except Exception as local_error:
@@ -133,15 +145,16 @@ class RAGSystem:
                     self.model_name,
                     token=self.hf_token,
                     torch_dtype=torch.bfloat16,
-                    device_map="auto",  # Otomatik cihaz haritalaması
+                    device_map="balanced",  # Dengeli cihaz haritalaması
                     trust_remote_code=True,
                     low_cpu_mem_usage=True,
                     use_cache=True,
                     cache_dir=cache_dir,
                     local_files_only=False,
                     resume_download=True,
-                    max_memory={0: "18GiB", 1: "18GiB"},  # Her iki GPU için bellek sınırlaması
+                    max_memory={0: "14GiB", 1: "14GiB"},  # Her iki GPU için bellek sınırlaması
                     offload_folder="offload",  # Gerekirse CPU'ya offload et
+                    offload_state_dict=True,  # Durum sözlüğünü offload et
                 )
                 console.print("Model indirildi ve cache'e kaydedildi!", style="green")
             
