@@ -288,7 +288,28 @@ Aşağıda verilen bağlam bilgilerini kullanarak kullanıcının sorusuna kapsa
         # Bellek optimizasyonu için batch size'ı küçült
         generate_start_time = time.time()
         console.print("[bold yellow]Yanıt oluşturuluyor (bu işlem biraz zaman alabilir)...[/bold yellow]")
+        
+        # Token üretim ilerlemesini göstermek için callback
+        class GenerationProgressCallback:
+            def __init__(self, total_tokens=1024):
+                self.generated_tokens = 0
+                self.total_tokens = total_tokens
+                self.last_update_time = time.time()
+                self.update_interval = 2  # 2 saniyede bir güncelle
+            
+            def __call__(self, beam_idx, token_idx, token_id, scores, **kwargs):
+                self.generated_tokens = token_idx + 1
+                current_time = time.time()
+                if current_time - self.last_update_time > self.update_interval:
+                    progress = min(100, int(100 * self.generated_tokens / self.total_tokens))
+                    console.print(f"[cyan]Token üretiliyor: {self.generated_tokens}/{self.total_tokens} (%{progress}) - {current_time - generate_start_time:.1f} saniye geçti[/cyan]")
+                    self.last_update_time = current_time
+                return True
+        
+        progress_callback = GenerationProgressCallback(total_tokens=1024)
+        
         with torch.cuda.amp.autocast():  # Otomatik karışık hassasiyet kullan
+            console.print("[magenta]Model generate fonksiyonu çağrılıyor...[/magenta]")
             outputs = self.model.generate(
                 **inputs,
                 max_new_tokens=1024,  # Yanıt için maksimum yeni token sayısı
@@ -298,7 +319,8 @@ Aşağıda verilen bağlam bilgilerini kullanarak kullanıcının sorusuna kapsa
                 do_sample=True,  # Çeşitlilik için örnekleme yap
                 no_repeat_ngram_size=3,  # Tekrarları önle
                 repetition_penalty=1.2,  # Tekrarları cezalandır
-                pad_token_id=self.tokenizer.pad_token_id
+                pad_token_id=self.tokenizer.pad_token_id,
+                callback_function=progress_callback
             )
         console.print(f"[green]Yanıt oluşturuldu! ({time.time() - generate_start_time:.2f} saniye)[/green]")
         
