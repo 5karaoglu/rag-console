@@ -132,12 +132,12 @@ class RAGSystem:
             if self.gpu_count >= 2:
                 # Çoklu GPU için bellek yapılandırması
                 for i in range(self.gpu_count):
-                    max_memory[i] = "15GiB"  # Her GPU için bellek sınırı
-                max_memory["cpu"] = "30GB"  # CPU için bellek sınırı
+                    max_memory[i] = "12GiB"  # Her GPU için bellek sınırını azalt
+                max_memory["cpu"] = "32GB"  # CPU için bellek sınırını artır
             elif self.gpu_count == 1:
                 # Tek GPU için bellek yapılandırması
-                max_memory[0] = "24GiB"
-                max_memory["cpu"] = "30GB"
+                max_memory[0] = "20GiB"  # GPU bellek sınırını azalt
+                max_memory["cpu"] = "32GB"  # CPU için bellek sınırını artır
             else:
                 # GPU yok, sadece CPU
                 max_memory["cpu"] = "32GB"
@@ -149,7 +149,7 @@ class RAGSystem:
                         self.model = AutoModelForCausalLM.from_pretrained(
                             self.model_name,
                             token=self.hf_token,
-                            torch_dtype=torch.bfloat16,
+                            torch_dtype=torch.float16,  # bfloat16 yerine float16 kullan
                             device_map="auto",  # Otomatik cihaz haritalaması
                             trust_remote_code=True,
                             low_cpu_mem_usage=True,
@@ -159,6 +159,7 @@ class RAGSystem:
                             max_memory=max_memory,
                             offload_folder="offload",  # Gerekirse CPU'ya offload et
                             offload_state_dict=True,  # Durum sözlüğünü offload et
+                            load_in_8bit=True,  # 8-bit quantization kullan
                         )
                         console.print("Model yerel cache'den yüklendi!", style="green")
                     except Exception as local_error:
@@ -172,7 +173,7 @@ class RAGSystem:
                 self.model = AutoModelForCausalLM.from_pretrained(
                     self.model_name,
                     token=self.hf_token,
-                    torch_dtype=torch.bfloat16,
+                    torch_dtype=torch.float16,  # bfloat16 yerine float16 kullan
                     device_map="auto",  # Otomatik cihaz haritalaması
                     trust_remote_code=True,
                     low_cpu_mem_usage=True,
@@ -183,6 +184,7 @@ class RAGSystem:
                     max_memory=max_memory,
                     offload_folder="offload",  # Gerekirse CPU'ya offload et
                     offload_state_dict=True,  # Durum sözlüğünü offload et
+                    load_in_8bit=True,  # 8-bit quantization kullan
                 )
                 console.print("Model indirildi ve cache'e kaydedildi!", style="green")
             
