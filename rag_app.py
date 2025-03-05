@@ -235,7 +235,7 @@ Aşağıda verilen bağlam bilgilerini kullanarak kullanıcının sorusuna kapsa
         inputs = self.tokenizer(prompt, return_tensors="pt").to(self.device)
         outputs = self.model.generate(
             **inputs,
-            max_length=768,  # Daha uzun yanıtlar için
+            max_new_tokens=1024,  # Yanıt için maksimum yeni token sayısı
             num_return_sequences=1,
             temperature=0.3,  # Daha tutarlı yanıtlar için düşük sıcaklık
             top_p=0.85,  # Nucleus sampling için
