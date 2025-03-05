@@ -1,4 +1,4 @@
-FROM nvidia/cuda:12.1.0-devel-ubuntu22.04
+FROM nvidia/cuda:12.1.0-runtime-ubuntu22.04
 
 # Locale ayarlarını düzelt
 RUN apt-get update && apt-get install -y locales && \
@@ -16,7 +16,6 @@ ENV CUDA_DEVICE_ORDER=PCI_BUS_ID
 ENV CUDA_VISIBLE_DEVICES=all
 ENV PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:128,garbage_collection_threshold:0.8
 ENV TOKENIZERS_PARALLELISM=true
-ENV CUDA_HOME=/usr/local/cuda
 
 # Sistem bağımlılıklarını yükle
 RUN apt-get update && apt-get install -y \
@@ -24,8 +23,6 @@ RUN apt-get update && apt-get install -y \
     python3-pip \
     git \
     wget \
-    build-essential \
-    ninja-build \
     && rm -rf /var/lib/apt/lists/*
 
 # Çalışma dizinini oluştur
@@ -48,12 +45,6 @@ ENV XDG_CACHE_HOME=/app/cache
 # Python bağımlılıklarını kopyala ve yükle
 COPY requirements.txt .
 RUN pip3 install --no-cache-dir -r requirements.txt
-
-# NVIDIA optimizasyonları için gerekli paketleri yükle
-RUN pip3 install --no-cache-dir ninja
-# Flash-attention kurulumu için gerekli ayarlar
-ENV FLASH_ATTENTION_SKIP_CUDA_BUILD=0
-RUN pip3 install --no-cache-dir flash-attn --no-build-isolation
 
 # Uygulama kodlarını kopyala
 COPY rag_app.py .
