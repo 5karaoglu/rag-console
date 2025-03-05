@@ -12,7 +12,13 @@ import warnings
 import traceback
 import os
 import glob
-warnings.filterwarnings('ignore')
+import sys
+from typing import List, Dict, Any
+from langchain_community.embeddings import HuggingFaceEmbeddings
+from langchain_community.vectorstores import Chroma
+
+# CUDA bellek ayarları
+os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "max_split_size_mb:128"
 
 console = Console()
 app = typer.Typer()
@@ -109,7 +115,9 @@ class RAGSystem:
                             low_cpu_mem_usage=True,
                             use_cache=True,
                             cache_dir=cache_dir,
-                            local_files_only=True
+                            local_files_only=True,
+                            max_memory={0: "20GiB"},  # GPU belleğini sınırla
+                            offload_folder="offload",  # Gerekirse CPU'ya offload et
                         )
                         console.print("Model yerel cache'den yüklendi!", style="green")
                     except Exception as local_error:
@@ -130,7 +138,9 @@ class RAGSystem:
                     use_cache=True,
                     cache_dir=cache_dir,
                     local_files_only=False,
-                    resume_download=True
+                    resume_download=True,
+                    max_memory={0: "20GiB"},  # GPU belleğini sınırla
+                    offload_folder="offload",  # Gerekirse CPU'ya offload et
                 )
                 console.print("Model indirildi ve cache'e kaydedildi!", style="green")
             
@@ -233,16 +243,21 @@ Aşağıda verilen bağlam bilgilerini kullanarak kullanıcının sorusuna kapsa
         
         # Model ile yanıt oluştur
         inputs = self.tokenizer(prompt, return_tensors="pt").to(self.device)
-        outputs = self.model.generate(
-            **inputs,
-            max_new_tokens=1024,  # Yanıt için maksimum yeni token sayısı
-            num_return_sequences=1,
-            temperature=0.3,  # Daha tutarlı yanıtlar için düşük sıcaklık
-            top_p=0.85,  # Nucleus sampling için
-            do_sample=True,  # Çeşitlilik için örnekleme yap
-            no_repeat_ngram_size=3,  # Tekrarları önle
-            repetition_penalty=1.2  # Tekrarları cezalandır
-        )
+        
+        # Bellek optimizasyonu için batch size'ı küçült
+        with torch.cuda.amp.autocast():  # Otomatik karışık hassasiyet kullan
+            outputs = self.model.generate(
+                **inputs,
+                max_new_tokens=1024,  # Yanıt için maksimum yeni token sayısı
+                num_return_sequences=1,
+                temperature=0.3,  # Daha tutarlı yanıtlar için düşük sıcaklık
+                top_p=0.85,  # Nucleus sampling için
+                do_sample=True,  # Çeşitlilik için örnekleme yap
+                no_repeat_ngram_size=3,  # Tekrarları önle
+                repetition_penalty=1.2,  # Tekrarları cezalandır
+                pad_token_id=self.tokenizer.pad_token_id,
+                attention_mask=inputs.attention_mask
+            )
         response = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
         
         return response.split("Yanıt:")[-1].strip()
