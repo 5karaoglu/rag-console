@@ -13,6 +13,7 @@ import traceback
 import os
 import glob
 import sys
+import time
 from typing import List, Dict, Any
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_community.vectorstores import Chroma
@@ -227,16 +228,26 @@ class RAGSystem:
         console.print("JSON verisi yüklendi!", style="green")
         
     def query(self, question: str) -> str:
+        console.print(f"\n[bold cyan]Soru:[/bold cyan] {question}")
+        
+        # İşlem başlangıç zamanını kaydet
+        start_time = time.time()
+        
+        console.print("[bold yellow]Bellek temizleniyor...[/bold yellow]")
         # Bellek temizliği
         gc.collect()
         torch.cuda.empty_cache()
         
+        console.print("[bold yellow]Benzer dökümanlar aranıyor...[/bold yellow]")
         # Benzer dökümanları bul
+        query_start_time = time.time()
         results = self.collection.query(
             query_texts=[question],
             n_results=3
         )
+        console.print(f"[green]Benzer dökümanlar bulundu! ({time.time() - query_start_time:.2f} saniye)[/green]")
         
+        console.print("[bold yellow]Prompt oluşturuluyor...[/bold yellow]")
         # Prompt oluştur
         context = "\n".join(results["documents"][0])
         prompt = f"""### GÖREV:
@@ -259,10 +270,24 @@ Aşağıda verilen bağlam bilgilerini kullanarak kullanıcının sorusuna kapsa
 ### YANITIM:
 """
         
+        console.print("[bold yellow]Model yanıtı oluşturuyor...[/bold yellow]")
         # Model ile yanıt oluştur
+        tokenize_start_time = time.time()
         inputs = self.tokenizer(prompt, return_tensors="pt").to(self.device)
+        console.print(f"[green]Tokenize işlemi tamamlandı! ({time.time() - tokenize_start_time:.2f} saniye)[/green]")
+        
+        # GPU bellek durumunu göster
+        if torch.cuda.is_available():
+            for i in range(torch.cuda.device_count()):
+                total_mem = torch.cuda.get_device_properties(i).total_memory / 1024**3
+                reserved_mem = torch.cuda.memory_reserved(i) / 1024**3
+                allocated_mem = torch.cuda.memory_allocated(i) / 1024**3
+                free_mem = total_mem - reserved_mem
+                console.print(f"[blue]GPU {i} Bellek: Toplam={total_mem:.1f}GB, Ayrılan={allocated_mem:.1f}GB, Rezerve={reserved_mem:.1f}GB, Boş={free_mem:.1f}GB[/blue]")
         
         # Bellek optimizasyonu için batch size'ı küçült
+        generate_start_time = time.time()
+        console.print("[bold yellow]Yanıt oluşturuluyor (bu işlem biraz zaman alabilir)...[/bold yellow]")
         with torch.cuda.amp.autocast():  # Otomatik karışık hassasiyet kullan
             outputs = self.model.generate(
                 **inputs,
@@ -275,9 +300,17 @@ Aşağıda verilen bağlam bilgilerini kullanarak kullanıcının sorusuna kapsa
                 repetition_penalty=1.2,  # Tekrarları cezalandır
                 pad_token_id=self.tokenizer.pad_token_id
             )
-        response = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
+        console.print(f"[green]Yanıt oluşturuldu! ({time.time() - generate_start_time:.2f} saniye)[/green]")
         
-        return response.split("Yanıt:")[-1].strip()
+        decode_start_time = time.time()
+        response = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
+        console.print(f"[green]Decode işlemi tamamlandı! ({time.time() - decode_start_time:.2f} saniye)[/green]")
+        
+        # Toplam süreyi göster
+        total_time = time.time() - start_time
+        console.print(f"[bold green]Toplam işlem süresi: {total_time:.2f} saniye[/bold green]")
+        
+        return response.split("YANITIM:")[-1].strip()
 
 @app.command()
 def main(json_path: str = "Book1.json"):
