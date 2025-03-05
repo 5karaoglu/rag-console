@@ -14,6 +14,7 @@ import os
 import glob
 import sys
 import time
+import threading
 from typing import List, Dict, Any
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_community.vectorstores import Chroma
@@ -289,39 +290,43 @@ Aşağıda verilen bağlam bilgilerini kullanarak kullanıcının sorusuna kapsa
         generate_start_time = time.time()
         console.print("[bold yellow]Yanıt oluşturuluyor (bu işlem biraz zaman alabilir)...[/bold yellow]")
         
-        # Token üretim ilerlemesini göstermek için callback
-        class GenerationProgressCallback:
-            def __init__(self, total_tokens=1024):
-                self.generated_tokens = 0
-                self.total_tokens = total_tokens
-                self.last_update_time = time.time()
-                self.update_interval = 2  # 2 saniyede bir güncelle
-            
-            def __call__(self, beam_idx, token_idx, token_id, scores, **kwargs):
-                self.generated_tokens = token_idx + 1
-                current_time = time.time()
-                if current_time - self.last_update_time > self.update_interval:
-                    progress = min(100, int(100 * self.generated_tokens / self.total_tokens))
-                    console.print(f"[cyan]Token üretiliyor: {self.generated_tokens}/{self.total_tokens} (%{progress}) - {current_time - generate_start_time:.1f} saniye geçti[/cyan]")
-                    self.last_update_time = current_time
-                return True
+        # İlerleme göstergesi için thread
+        stop_progress = threading.Event()
         
-        progress_callback = GenerationProgressCallback(total_tokens=1024)
+        def show_progress():
+            start = time.time()
+            i = 0
+            symbols = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
+            while not stop_progress.is_set():
+                elapsed = time.time() - start
+                i = (i + 1) % len(symbols)
+                console.print(f"[cyan]{symbols[i]} Token üretiliyor... ({elapsed:.1f} saniye geçti)[/cyan]")
+                time.sleep(1)
         
-        with torch.cuda.amp.autocast():  # Otomatik karışık hassasiyet kullan
-            console.print("[magenta]Model generate fonksiyonu çağrılıyor...[/magenta]")
-            outputs = self.model.generate(
-                **inputs,
-                max_new_tokens=1024,  # Yanıt için maksimum yeni token sayısı
-                num_return_sequences=1,
-                temperature=0.3,  # Daha tutarlı yanıtlar için düşük sıcaklık
-                top_p=0.85,  # Nucleus sampling için
-                do_sample=True,  # Çeşitlilik için örnekleme yap
-                no_repeat_ngram_size=3,  # Tekrarları önle
-                repetition_penalty=1.2,  # Tekrarları cezalandır
-                pad_token_id=self.tokenizer.pad_token_id,
-                callback_function=progress_callback
-            )
+        # İlerleme göstergesini başlat
+        progress_thread = threading.Thread(target=show_progress)
+        progress_thread.daemon = True
+        progress_thread.start()
+        
+        try:
+            with torch.cuda.amp.autocast():  # Otomatik karışık hassasiyet kullan
+                console.print("[magenta]Model generate fonksiyonu çağrılıyor...[/magenta]")
+                outputs = self.model.generate(
+                    **inputs,
+                    max_new_tokens=1024,  # Yanıt için maksimum yeni token sayısı
+                    num_return_sequences=1,
+                    temperature=0.3,  # Daha tutarlı yanıtlar için düşük sıcaklık
+                    top_p=0.85,  # Nucleus sampling için
+                    do_sample=True,  # Çeşitlilik için örnekleme yap
+                    no_repeat_ngram_size=3,  # Tekrarları önle
+                    repetition_penalty=1.2,  # Tekrarları cezalandır
+                    pad_token_id=self.tokenizer.pad_token_id
+                )
+        finally:
+            # İlerleme göstergesini durdur
+            stop_progress.set()
+            progress_thread.join(timeout=1)
+        
         console.print(f"[green]Yanıt oluşturuldu! ({time.time() - generate_start_time:.2f} saniye)[/green]")
         
         decode_start_time = time.time()
