@@ -173,8 +173,6 @@ class RAGSystem:
                             max_memory=max_memory,
                             offload_folder="offload",  # Gerekirse CPU'ya offload et
                             offload_state_dict=True,  # Durum sözlüğünü offload et
-                            load_in_8bit=True,  # 8-bit quantization kullan
-                            load_in_8bit_fp32_cpu_offload=True,  # 8-bit CPU offloading optimize et
                         )
                         console.print("Model yerel cache'den yüklendi!", style="green")
                     except Exception as local_error:
@@ -199,15 +197,13 @@ class RAGSystem:
                     max_memory=max_memory,
                     offload_folder="offload",  # Gerekirse CPU'ya offload et
                     offload_state_dict=True,  # Durum sözlüğünü offload et
-                    load_in_8bit=True,  # 8-bit quantization kullan
-                    load_in_8bit_fp32_cpu_offload=True,  # 8-bit CPU offloading optimize et
                 )
                 console.print("Model indirildi ve cache'e kaydedildi!", style="green")
             
             self.model.config.pad_token_id = self.tokenizer.pad_token_id
             
-            # Model için FP16 hassasiyetini etkinleştir - 8-bit quantization kullanıldığında bu adımı atla
-            if not hasattr(self.model, "is_quantized") and hasattr(self.model, "half") and torch.cuda.is_available():
+            # Model için FP16 hassasiyetini etkinleştir
+            if hasattr(self.model, "half") and torch.cuda.is_available():
                 self.model = self.model.half()
                 console.print("Model FP16 hassasiyetine dönüştürüldü", style="green")
             
