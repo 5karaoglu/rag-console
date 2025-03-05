@@ -16,9 +16,10 @@ import sys
 from typing import List, Dict, Any
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_community.vectorstores import Chroma
+import gc
 
 # CUDA bellek ayarları
-os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "max_split_size_mb:128"
+os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "max_split_size_mb:64"
 
 console = Console()
 app = typer.Typer()
@@ -110,13 +111,13 @@ class RAGSystem:
                             self.model_name,
                             token=self.hf_token,
                             torch_dtype=torch.bfloat16,
-                            device_map="auto",
+                            device_map="auto",  # Otomatik cihaz haritalaması
                             trust_remote_code=True,
                             low_cpu_mem_usage=True,
                             use_cache=True,
                             cache_dir=cache_dir,
                             local_files_only=True,
-                            max_memory={0: "20GiB"},  # GPU belleğini sınırla
+                            max_memory={0: "18GiB", 1: "18GiB"},  # Her iki GPU için bellek sınırlaması
                             offload_folder="offload",  # Gerekirse CPU'ya offload et
                         )
                         console.print("Model yerel cache'den yüklendi!", style="green")
@@ -132,14 +133,14 @@ class RAGSystem:
                     self.model_name,
                     token=self.hf_token,
                     torch_dtype=torch.bfloat16,
-                    device_map="auto",
+                    device_map="auto",  # Otomatik cihaz haritalaması
                     trust_remote_code=True,
                     low_cpu_mem_usage=True,
                     use_cache=True,
                     cache_dir=cache_dir,
                     local_files_only=False,
                     resume_download=True,
-                    max_memory={0: "20GiB"},  # GPU belleğini sınırla
+                    max_memory={0: "18GiB", 1: "18GiB"},  # Her iki GPU için bellek sınırlaması
                     offload_folder="offload",  # Gerekirse CPU'ya offload et
                 )
                 console.print("Model indirildi ve cache'e kaydedildi!", style="green")
@@ -213,6 +214,10 @@ class RAGSystem:
         console.print("JSON verisi yüklendi!", style="green")
         
     def query(self, question: str) -> str:
+        # Bellek temizliği
+        gc.collect()
+        torch.cuda.empty_cache()
+        
         # Benzer dökümanları bul
         results = self.collection.query(
             query_texts=[question],

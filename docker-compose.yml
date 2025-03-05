@@ -21,10 +21,11 @@ services:
       - XDG_CACHE_HOME=/app/cache
       - HUGGING_FACE_TOKEN=${HUGGING_FACE_TOKEN}  # Hugging Face token'ı
       - USE_LOCAL_MODEL_FIRST=true  # Önce yerel model dene
+      - PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:64  # CUDA bellek ayarları
     deploy:
       resources:
         reservations:
           devices:
             - driver: nvidia
-              count: 1
+              count: 2  # İki GPU kullan
               capabilities: [gpu] 
