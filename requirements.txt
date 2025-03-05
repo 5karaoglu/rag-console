@@ -12,4 +12,9 @@ einops==0.7.0
 tiktoken==0.5.2
 qwen==0.1.1
 langchain==0.1.11
-langchain-community==0.0.27 
+langchain-community==0.0.27
+bitsandbytes==0.42.0
+optimum==1.16.1
+ninja==1.11.1
+safetensors==0.4.1
+xformers==0.0.23.post1 

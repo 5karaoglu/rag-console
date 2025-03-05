@@ -21,7 +21,7 @@ from langchain_community.vectorstores import Chroma
 import gc
 
 # CUDA bellek ayarları
-os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "max_split_size_mb:64"
+os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "max_split_size_mb:128,garbage_collection_threshold:0.8"
 
 console = Console()
 app = typer.Typer()
@@ -32,6 +32,17 @@ class RAGSystem:
             self.json_path = json_path
             self.device = "cuda" if torch.cuda.is_available() else "cpu"
             console.print(f"\nCihaz: {self.device}", style="yellow")
+            
+            # GPU sayısını ve özelliklerini kontrol et
+            if torch.cuda.is_available():
+                self.gpu_count = torch.cuda.device_count()
+                console.print(f"Kullanılabilir GPU sayısı: {self.gpu_count}", style="yellow")
+                for i in range(self.gpu_count):
+                    gpu_name = torch.cuda.get_device_name(i)
+                    console.print(f"GPU {i}: {gpu_name}", style="yellow")
+            else:
+                self.gpu_count = 0
+                console.print("GPU bulunamadı, CPU kullanılacak", style="red")
             
             # Hugging Face token kontrolü
             self.hf_token = os.getenv('HUGGING_FACE_TOKEN')
@@ -76,7 +87,7 @@ class RAGSystem:
                 token=self.hf_token,
                 trust_remote_code=True,
                 padding_side="left",
-                use_fast=False,
+                use_fast=True,  # Hızlı tokenizer kullan
                 cache_dir=cache_dir,
                 local_files_only=False
             )
@@ -116,6 +127,21 @@ class RAGSystem:
                     console.print("Model cache bulundu fakat USE_LOCAL_MODEL_FIRST=false, indiriliyor...", style="yellow")
                 try_local_first = False
             
+            # GPU bellek yapılandırması
+            max_memory = {}
+            if self.gpu_count >= 2:
+                # Çoklu GPU için bellek yapılandırması
+                for i in range(self.gpu_count):
+                    max_memory[i] = "15GiB"  # Her GPU için bellek sınırı
+                max_memory["cpu"] = "30GB"  # CPU için bellek sınırı
+            elif self.gpu_count == 1:
+                # Tek GPU için bellek yapılandırması
+                max_memory[0] = "24GiB"
+                max_memory["cpu"] = "30GB"
+            else:
+                # GPU yok, sadece CPU
+                max_memory["cpu"] = "32GB"
+            
             try:
                 # Önce yerel dosyalardan yüklemeyi dene
                 if try_local_first:
@@ -124,13 +150,13 @@ class RAGSystem:
                             self.model_name,
                             token=self.hf_token,
                             torch_dtype=torch.bfloat16,
-                            device_map="balanced",  # Dengeli cihaz haritalaması
+                            device_map="auto",  # Otomatik cihaz haritalaması
                             trust_remote_code=True,
                             low_cpu_mem_usage=True,
                             use_cache=True,
                             cache_dir=cache_dir,
                             local_files_only=True,
-                            max_memory={0: "14GiB", 1: "14GiB"},  # Her iki GPU için bellek sınırlaması
+                            max_memory=max_memory,
                             offload_folder="offload",  # Gerekirse CPU'ya offload et
                             offload_state_dict=True,  # Durum sözlüğünü offload et
                         )
@@ -147,20 +173,26 @@ class RAGSystem:
                     self.model_name,
                     token=self.hf_token,
                     torch_dtype=torch.bfloat16,
-                    device_map="balanced",  # Dengeli cihaz haritalaması
+                    device_map="auto",  # Otomatik cihaz haritalaması
                     trust_remote_code=True,
                     low_cpu_mem_usage=True,
                     use_cache=True,
                     cache_dir=cache_dir,
                     local_files_only=False,
                     resume_download=True,
-                    max_memory={0: "14GiB", 1: "14GiB"},  # Her iki GPU için bellek sınırlaması
+                    max_memory=max_memory,
                     offload_folder="offload",  # Gerekirse CPU'ya offload et
                     offload_state_dict=True,  # Durum sözlüğünü offload et
                 )
                 console.print("Model indirildi ve cache'e kaydedildi!", style="green")
             
             self.model.config.pad_token_id = self.tokenizer.pad_token_id
+            
+            # Model için FP16 hassasiyetini etkinleştir
+            if hasattr(self.model, "half") and torch.cuda.is_available():
+                self.model = self.model.half()
+                console.print("Model FP16 hassasiyetine dönüştürüldü", style="green")
+            
             console.print("\nModel yapılandırması tamamlandı!", style="green")
             
         except Exception as e:
@@ -174,9 +206,11 @@ class RAGSystem:
         console.print("Veritabanı hazırlanıyor...", style="yellow")
         self.chroma_client = chromadb.PersistentClient(path="./chroma_db")
         
-        # Sentence transformer embedding fonksiyonunu kullan
+        # Sentence transformer embedding fonksiyonunu kullan ve GPU'ya taşı
+        model_kwargs = {'device': 'cuda'} if torch.cuda.is_available() else {}
         self.embedding_function = embedding_functions.SentenceTransformerEmbeddingFunction(
-            model_name="all-mpnet-base-v2"
+            model_name="all-mpnet-base-v2",
+            model_kwargs=model_kwargs
         )
         
         # Koleksiyon oluştur veya var olanı al
@@ -274,7 +308,7 @@ Aşağıda verilen bağlam bilgilerini kullanarak kullanıcının sorusuna kapsa
         console.print("[bold yellow]Model yanıtı oluşturuyor...[/bold yellow]")
         # Model ile yanıt oluştur
         tokenize_start_time = time.time()
-        inputs = self.tokenizer(prompt, return_tensors="pt").to(self.device)
+        inputs = self.tokenizer(prompt, return_tensors="pt", padding=True).to(self.device)
         console.print(f"[green]Tokenize işlemi tamamlandı! ({time.time() - tokenize_start_time:.2f} saniye)[/green]")
         
         # GPU bellek durumunu göster
@@ -309,18 +343,19 @@ Aşağıda verilen bağlam bilgilerini kullanarak kullanıcının sorusuna kapsa
         progress_thread.start()
         
         try:
-            with torch.cuda.amp.autocast():  # Otomatik karışık hassasiyet kullan
+            with torch.cuda.amp.autocast(dtype=torch.float16):  # FP16 hassasiyeti kullan
                 console.print("[magenta]Model generate fonksiyonu çağrılıyor...[/magenta]")
                 outputs = self.model.generate(
                     **inputs,
-                    max_new_tokens=1024,  # Yanıt için maksimum yeni token sayısı
+                    max_new_tokens=512,  # Yanıt için maksimum yeni token sayısını azalt
                     num_return_sequences=1,
                     temperature=0.3,  # Daha tutarlı yanıtlar için düşük sıcaklık
                     top_p=0.85,  # Nucleus sampling için
                     do_sample=True,  # Çeşitlilik için örnekleme yap
                     no_repeat_ngram_size=3,  # Tekrarları önle
                     repetition_penalty=1.2,  # Tekrarları cezalandır
-                    pad_token_id=self.tokenizer.pad_token_id
+                    pad_token_id=self.tokenizer.pad_token_id,
+                    use_cache=True  # Önbelleği kullan
                 )
         finally:
             # İlerleme göstergesini durdur
