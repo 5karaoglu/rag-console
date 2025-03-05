@@ -142,6 +142,20 @@ class RAGSystem:
                 # GPU yok, sadece CPU
                 max_memory["cpu"] = "32GB"
             
+            # Özel device_map oluştur
+            # Kritik katmanları GPU'da, diğerlerini CPU'da çalıştır
+            if torch.cuda.is_available():
+                console.print("Özel device_map oluşturuluyor...", style="yellow")
+                # Basit bir device_map: Kritik katmanları GPU'ya, diğerlerini CPU'ya yerleştir
+                device_map = {
+                    "transformer.word_embeddings": 0,
+                    "transformer.h": "balanced",  # Transformer katmanlarını dengeli dağıt
+                    "transformer.ln_f": 0,
+                    "lm_head": 0,
+                }
+            else:
+                device_map = "auto"
+            
             try:
                 # Önce yerel dosyalardan yüklemeyi dene
                 if try_local_first:
@@ -150,7 +164,7 @@ class RAGSystem:
                             self.model_name,
                             token=self.hf_token,
                             torch_dtype=torch.float16,  # bfloat16 yerine float16 kullan
-                            device_map="auto",  # Otomatik cihaz haritalaması
+                            device_map=device_map,  # Özel cihaz haritalaması
                             trust_remote_code=True,
                             low_cpu_mem_usage=True,
                             use_cache=True,
@@ -160,6 +174,7 @@ class RAGSystem:
                             offload_folder="offload",  # Gerekirse CPU'ya offload et
                             offload_state_dict=True,  # Durum sözlüğünü offload et
                             load_in_8bit=True,  # 8-bit quantization kullan
+                            load_in_8bit_fp32_cpu_offload=True,  # 8-bit CPU offloading optimize et
                         )
                         console.print("Model yerel cache'den yüklendi!", style="green")
                     except Exception as local_error:
@@ -174,7 +189,7 @@ class RAGSystem:
                     self.model_name,
                     token=self.hf_token,
                     torch_dtype=torch.float16,  # bfloat16 yerine float16 kullan
-                    device_map="auto",  # Otomatik cihaz haritalaması
+                    device_map=device_map,  # Özel cihaz haritalaması
                     trust_remote_code=True,
                     low_cpu_mem_usage=True,
                     use_cache=True,
@@ -185,13 +200,14 @@ class RAGSystem:
                     offload_folder="offload",  # Gerekirse CPU'ya offload et
                     offload_state_dict=True,  # Durum sözlüğünü offload et
                     load_in_8bit=True,  # 8-bit quantization kullan
+                    load_in_8bit_fp32_cpu_offload=True,  # 8-bit CPU offloading optimize et
                 )
                 console.print("Model indirildi ve cache'e kaydedildi!", style="green")
             
             self.model.config.pad_token_id = self.tokenizer.pad_token_id
             
-            # Model için FP16 hassasiyetini etkinleştir
-            if hasattr(self.model, "half") and torch.cuda.is_available():
+            # Model için FP16 hassasiyetini etkinleştir - 8-bit quantization kullanıldığında bu adımı atla
+            if not hasattr(self.model, "is_quantized") and hasattr(self.model, "half") and torch.cuda.is_available():
                 self.model = self.model.half()
                 console.print("Model FP16 hassasiyetine dönüştürüldü", style="green")
             
