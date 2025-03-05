@@ -257,16 +257,23 @@ def main(json_path: str = "Book1.json"):
         console.print("\n🤖 RAG Sistemi hazır! Çıkmak için 'exit' yazın.\n", style="bold green")
         
         while True:
-            question = Prompt.ask("\nSorunuzu yazın")
-            
-            if question.lower() == "exit":
+            try:
+                question = Prompt.ask("\nSorunuzu yazın")
+                
+                if question.lower() == "exit":
+                    break
+                    
+                with console.status("Yanıt oluşturuluyor..."):
+                    response = rag.query(question)
+                    
+                console.print("\nYanıt:", style="bold blue")
+                console.print(response, style="green")
+            except EOFError:
+                console.print("\n\n👋 Program sonlandırılıyor (EOF alındı)...", style="bold yellow")
                 break
-                
-            with console.status("Yanıt oluşturuluyor..."):
-                response = rag.query(question)
-                
-            console.print("\nYanıt:", style="bold blue")
-            console.print(response, style="green")
+            except KeyboardInterrupt:
+                console.print("\n\n👋 Program sonlandırılıyor (Ctrl+C)...", style="bold yellow")
+                break
             
     except Exception as e:
         console.print(f"\n❌ Hata: {str(e)}", style="bold red")

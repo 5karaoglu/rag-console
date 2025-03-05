@@ -3,6 +3,8 @@ version: '3.8'
 services:
   rag-app:
     build: .
+    stdin_open: true  # STDIN'i açık tut
+    tty: true  # TTY ata
     volumes:
       - ./data/chroma_db:/app/chroma_db  # ChromaDB verilerini kalıcı hale getir
       - ./data/cache/huggingface:/app/cache/huggingface  # Hugging Face cache
